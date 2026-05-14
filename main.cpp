@@ -69,7 +69,7 @@ glm::vec3 cameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
 
-glm::vec3 playerPos = glm::vec3(0.0f, 0.0f, 0.0f);
+glm::vec3 playerPos = glm::vec3(2.0f, 0.0f, 2.0f);
 bool firstPerson = true;
 
 // --- LABERINTO NIVEL 1 (Matriz Global) ---
@@ -97,6 +97,7 @@ void processInput(GLFWwindow *window) {
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
         glfwSetWindowShouldClose(window, true);
 
+    // Control de cámara C (Orbital vs Primera Persona)
     static bool cKeyPressed = false;
     if (glfwGetKey(window, GLFW_KEY_C) == GLFW_PRESS) {
         if (!cKeyPressed) {
@@ -107,15 +108,37 @@ void processInput(GLFWwindow *window) {
         cKeyPressed = false;
     }
 
-    float velocity = 5.0f * deltaTime;
+    // --- CÁLCULO DE COLISIÓN ---
+    float velocity = 4.0f * deltaTime; // Ajusta la velocidad si lo sientes muy rápido
+    glm::vec3 nextPos = playerPos; 
+
+    // Calculamos el movimiento deseado
     if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
-        playerPos += cameraFront * velocity;
+        nextPos += cameraFront * velocity;
     if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
-        playerPos -= cameraFront * velocity;
+        nextPos -= cameraFront * velocity;
     if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-        playerPos -= glm::normalize(glm::cross(cameraFront, cameraUp)) * velocity;
+        nextPos -= glm::normalize(glm::cross(cameraFront, cameraUp)) * velocity;
     if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
-        playerPos += glm::normalize(glm::cross(cameraFront, cameraUp)) * velocity;
+        nextPos += glm::normalize(glm::cross(cameraFront, cameraUp)) * velocity;
+
+    // Mantenemos la altura (Y) fija para que no "vuele" ni se hunda
+    nextPos.y = playerPos.y; 
+
+    // Convertimos la posición 3D a coordenadas de la Matriz
+    // Dividimos entre 2.0f porque escalamos los muros a ese tamaño en el render
+    int matrizX = round(nextPos.x / 2.0f);
+    int matrizZ = round(nextPos.z / 2.0f);
+
+    // Verificamos límites y si la celda es un pasillo (0)
+    if (matrizX >= 0 && matrizX < COLUMNAS && matrizZ >= 0 && matrizZ < FILAS) {
+        if (laberintoNivel1[matrizZ][matrizX] == 0) {
+            playerPos = nextPos; // Solo permitimos el movimiento si es un pasillo
+        }
+    } else {
+        // Si se sale de los límites del laberinto (la salida), permitimos movimiento libre
+        playerPos = nextPos; 
+    }
 }
 
 // suelo
@@ -483,10 +506,9 @@ int main()
     glEnable(GL_BLEND);     
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    Mesh chicaMOdel = cargarModelo("assets/models/GirlModel.glb");
-    unsigned int texturaArbol = cargarTextura("assets/textures/arbol.png");
+    Mesh chicaMOdel = cargarModelo("/Users/natyv/Documents/Nataly/Laberinto-OpenGL/assets/models/GirlModel.glb");
+    unsigned int texturaArbol = cargarTextura("/Users/natyv/Documents/Nataly/Laberinto-OpenGL/assets/textures/arbol.png");
 
- 
 
     // arboles init
     std::mt19937 gen(70);
@@ -588,8 +610,8 @@ int main()
     glEnableVertexAttribArray(0);
 
     // shaders
-    unsigned int animeShader = loadShader("shaders/vertex_shader.glsl", "shaders/fragment_shader.glsl");
-    unsigned int skyboxShader = loadShader("shaders/sky_v.glsl", "shaders/sky_f.glsl");
+    unsigned int animeShader = loadShader("/Users/natyv/Documents/Nataly/Laberinto-OpenGL/shaders/vertex_shader.glsl", "/Users/natyv/Documents/Nataly/Laberinto-OpenGL/shaders/fragment_shader.glsl");
+    unsigned int skyboxShader = loadShader("/Users/natyv/Documents/Nataly/Laberinto-OpenGL/shaders/sky_v.glsl", "/Users/natyv/Documents/Nataly/Laberinto-OpenGL/shaders/sky_f.glsl");
 
     int modelLoc = glGetUniformLocation(animeShader, "model");
     int uColorLoc = glGetUniformLocation(animeShader, "uColor");
@@ -685,19 +707,21 @@ while (!glfwWindowShouldClose(window)) {
         glDrawArrays(GL_TRIANGLES, 0, 6);
 
         // 6. Dibujar el Laberinto
-        glBindVertexArray(VAO[1]); 
-        glUniform3f(uColorLoc, 0.8f, 0.8f, 0.8f); 
-        for (int z = 0; z < FILAS; z++) {
-            for (int x = 0; x < COLUMNAS; x++) {
-                if (laberintoNivel1[z][x] == 1) {
-                    glm::mat4 modelMuro = glm::mat4(1.0f);
-                    modelMuro = glm::translate(modelMuro, glm::vec3(x * 2.0f, 1.0f, z * 2.0f)); 
-                    modelMuro = glm::scale(modelMuro, glm::vec3(2.0f, 2.0f, 2.0f)); 
-                    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(modelMuro));
-                    glDrawArrays(GL_TRIANGLES, 0, 36);
-                }
-            }
+        // 6. Dibujar el Laberinto
+glBindVertexArray(VAO[1]); 
+glUniform3f(uColorLoc, 0.8f, 0.8f, 0.8f); // Color gris claro para los muros
+for (int z = 0; z < FILAS; z++) {
+    for (int x = 0; x < COLUMNAS; x++) {
+        if (laberintoNivel1[z][x] == 1) {
+            glm::mat4 modelMuro = glm::mat4(1.0f);
+            // IMPORTANTE: Multiplicar por 2.0f para que coincida con la colisión
+            modelMuro = glm::translate(modelMuro, glm::vec3(x * 2.0f, 1.0f, z * 2.0f)); 
+            modelMuro = glm::scale(modelMuro, glm::vec3(2.0f, 2.0f, 2.0f)); 
+            glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(modelMuro));
+            glDrawArrays(GL_TRIANGLES, 0, 36);
         }
+    }
+}
 
         // 7. Dibujar los Árboles (requieren textura)
         glUniform1i(glGetUniformLocation(animeShader, "usesTexture"), 1);   
